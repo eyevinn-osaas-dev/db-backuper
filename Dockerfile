@@ -25,11 +25,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     redis-tools \
     && rm -rf /var/lib/apt/lists/*
 
-# ClickHouse client
-RUN curl -fsSL https://packages.clickhouse.com/deb/pool/main/c/clickhouse-common-static/clickhouse-common-static_24.8.6.70_amd64.deb \
-    -o /tmp/ch-common.deb && dpkg -i /tmp/ch-common.deb && rm /tmp/ch-common.deb && \
-    curl -fsSL https://packages.clickhouse.com/deb/pool/main/c/clickhouse-client/clickhouse-client_24.8.6.70_amd64.deb \
-    -o /tmp/ch-client.deb && dpkg -i /tmp/ch-client.deb && rm /tmp/ch-client.deb
+# ClickHouse client (via official apt repo)
+RUN curl -fsSL https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml > /dev/null 2>&1 || true && \
+    apt-get update && apt-get install -y --no-install-recommends apt-transport-https && \
+    curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml' > /dev/null 2>&1 || true && \
+    mkdir -p /usr/share/keyrings && \
+    curl -fsSL https://packages.clickhouse.com/keys/GPG-KEY-CLICKHOUSE.gpg | gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg] https://packages.clickhouse.com/deb stable main" > /etc/apt/sources.list.d/clickhouse.list && \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends clickhouse-client clickhouse-common-static && \
+    rm -rf /var/lib/apt/lists/*
 
 # Minio client (mc) for S3 operations
 RUN curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc \
