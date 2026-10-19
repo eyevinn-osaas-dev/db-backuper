@@ -30,6 +30,18 @@ docker run --rm \
 | `S3_ACCESS_KEY` | Yes | S3 access key |
 | `S3_SECRET_KEY` | Yes | S3 secret key |
 | `ENCRYPTION_KEY` | No | AES-256-CBC encryption key |
+| `S3_READY_TIMEOUT_SECONDS` | No | Max seconds to wait for the S3 endpoint to answer before the transfer (default `300`). Skipped for `amazonaws.com` endpoints. On timeout the job proceeds and the transfer decides the outcome |
+| `S3_READY_INTERVAL_SECONDS` | No | Seconds between readiness probes (default `5`) |
+
+Before every backup/restore the job waits for the S3 endpoint, `mc cp` is retried up to 3 times (5 s, then 15 s back-off; credential errors and missing objects are not retried), and backups ensure the bucket exists.
+
+## Running the tests
+
+```bash
+bash tests/run.sh
+```
+
+Requires bash, coreutils and gzip. Tools such as `mc`, `pg_dump` and `sleep` are stubbed.
 
 ## Supported Database URL Schemes
 

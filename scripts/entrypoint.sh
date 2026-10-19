@@ -88,7 +88,7 @@ echo "Database type: ${DB_TYPE}"
 echo "Host:          ${DB_HOST}:${DB_PORT}"
 echo "Database:      ${DB_NAME:-<all>}"
 echo "S3 target:     s3://${S3_BUCKET}/${S3_KEY}"
-echo "Encryption:    ${ENCRYPTION_KEY:+enabled}${ENCRYPTION_KEY:-disabled}"
+if [ -n "${ENCRYPTION_KEY:-}" ]; then echo "Encryption:    enabled"; else echo "Encryption:    disabled"; fi
 echo "=================="
 
 # Configure Minio client
@@ -106,6 +106,14 @@ SCRIPT="${SCRIPT_DIR}/${OPERATION}-${DB_TYPE}.sh"
 if [ ! -f "$SCRIPT" ]; then
   echo "ERROR: Script not found: ${SCRIPT}" >&2
   exit 1
+fi
+
+# Wait for the S3 endpoint (a freshly provisioned store answers 503 for a while).
+"${SCRIPT_DIR}/s3-wait.sh" || true
+
+# Ensure the bucket exists on backup (ClickHouse BACKUP ... TO S3 does not create it).
+if [ "$OPERATION" = "backup" ]; then
+  mc mb --ignore-existing "backup/${S3_BUCKET}" 2>/dev/null || true
 fi
 
 exec "$SCRIPT"
