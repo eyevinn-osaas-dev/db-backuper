@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+# First output line of every job: lets a release check read the loader commit from the logs.
+echo "db-backuper: valkey loader ${DB_BACKUPER_VALKEY_LOADER_COMMIT:-none}"
+
 OPERATION="${OPERATION:?OPERATION env var is required (backup|restore)}"
 DATABASE_URL="${DATABASE_URL:?DATABASE_URL env var is required}"
 S3_ENDPOINT="${S3_ENDPOINT:?S3_ENDPOINT env var is required}"

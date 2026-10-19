@@ -2,7 +2,7 @@
 # Run every tests/*.test.sh; exit non-zero if any fails.
 cd "$(dirname "$0")" || exit 1
 fail=0
-for t in ./*.test.sh; do
+for t in ./*.test.sh ./*.integration.sh; do
   echo "### $t"
   bash "$t" || fail=1
 done

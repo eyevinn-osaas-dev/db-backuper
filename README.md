@@ -43,6 +43,8 @@ bash tests/run.sh
 
 Requires bash, coreutils and gzip. Tools such as `mc`, `pg_dump` and `sleep` are stubbed.
 
+`tests/restore-valkey.integration.sh` uses real servers and is skipped unless `VALKEY_BIN_DIR` points at a directory with `valkey-server` and `valkey-cli` (or they are on `PATH`). Build the pinned fork commit and run it with `VALKEY_BIN_DIR=/tmp/valkey-src/src bash tests/restore-valkey.integration.sh`, or run it inside the built image.
+
 ## Supported Database URL Schemes
 
 The `DATABASE_URL` scheme determines which database client tool to use:
@@ -51,7 +53,7 @@ The `DATABASE_URL` scheme determines which database client tool to use:
 |--------|----------|-------------|-------------|
 | `postgres://` or `postgresql://` | PostgreSQL | pg_dump / pg_restore | 5432 |
 | `mariadb://` or `mysql://` | MariaDB/MySQL | mysqldump / mysql | 3306 |
-| `valkey://` or `redis://` | Valkey/Redis | redis-cli | 6379 |
+| `valkey://` or `redis://` | Valkey/Redis | redis-cli (backup), valkey-server + valkey-cli (restore) | 6379 |
 | `clickhouse://` | ClickHouse | clickhouse-client | 9000 |
 | `couchdb://` | CouchDB | HTTP API (curl) | 5984 |
 
@@ -67,6 +69,18 @@ Examples:
 - `valkey://redis.local:6379`
 - `clickhouse://default:pass@ch.local:9000/analytics`
 - `couchdb://admin:admin@couch.local:5984/documents`
+
+## Valkey/Redis restore
+
+Valkey/Redis restore loads the backup into a throwaway `valkey-server` inside the job pod and copies the keys to the target with `MIGRATE`. The loader is built from the fork commit pinned in the Dockerfile (`VALKEY_COMMIT`, `eyevinn-osaas/valkey`), because official images cannot read these backups. Every job prints `db-backuper: valkey loader <commit>` as its first line.
+
+- **Supported backups**: files whose magic is `REDIS` with RDB version 1-12. That covers the OSC catalog `valkey-io-valkey` build (fork `unstable`, version 255.255.255, RDB 12) and Redis OSS up to 7.2 and Valkey 7.2-8.1 (RDB 11 or lower).
+- **Supported targets**: servers that accept RDB-12 `DUMP` payloads, i.e. the OSC catalog fork build.
+- **Refused, all with exit code 5 and the target untouched**: a `VALKEY` magic (Valkey 9 or later), RDB above 12, module types, an empty backup, a backup the loader cannot load, and a target that rejects the probe key (an official Valkey 7.2-8.1 or 9.x target, wrong credentials, a timeout).
+- **In-place restore**: the target is flushed (`FLUSHALL SYNC`) and then filled from the backup. The flush happens only after the backup has been loaded, is non-empty and the target has accepted one probe key of every type in it.
+- **Exit code 5 after the flush**: a partial transfer, a verification shortfall (the target holds fewer keys than the backup in some database) or a `MIGRATE` timeout. After a timeout it is unknown whether the batch arrived, so success is never reported.
+- **Tunables**: `VALKEY_MIGRATE_TIMEOUT_MS` (I/O inactivity timeout per `MIGRATE` batch of 500 keys, default `60000`), `VALKEY_LOADER_WAIT_S` (max wait for the loader to load the file, default `3600`), `VALKEY_LOADER_PORT` (default `6390`).
+- **Memory**: the loader holds the whole dataset in the job pod. An OOM kill while loading fails the job before the flush.
 
 ## Encryption
 
