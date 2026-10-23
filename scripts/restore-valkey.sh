@@ -10,8 +10,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=error-trap.sh
+. "${SCRIPT_DIR}/error-trap.sh"
 
-DB_HOST="${DB_HOST:?DB_HOST is required}"
+DB_HOST="${DB_HOST:-}"
+if [ -z "$DB_HOST" ]; then
+  echo "ERROR: missing required variable DB_HOST" >&2
+  exit 1
+fi
 DB_PORT="${DB_PORT:-6379}"
 DB_USER="${DB_USER:-}"
 DB_PASSWORD="${DB_PASSWORD:-}"
@@ -112,13 +118,18 @@ scan_keys() {
 echo "Starting Valkey/Redis restore: ${DB_HOST}:${DB_PORT}"
 
 # a. Download and decrypt
+RESTORE_STEP="download"
 "${SCRIPT_DIR}/s3-download.sh" "${S3_BUCKET}" "${S3_KEY}" "${WORK}/download.rdb" || { echo "ERROR: S3 download failed" >&2; exit 3; }
 if [ -n "${ENCRYPTION_KEY:-}" ]; then
+  RESTORE_STEP="decrypt"
   "${SCRIPT_DIR}/decrypt.sh" "${WORK}/download.rdb" "$DUMP_FILE" || { echo "ERROR: Decryption failed" >&2; exit 4; }
   rm -f "${WORK}/download.rdb"
 else
+  RESTORE_STEP="download"
   mv "${WORK}/download.rdb" "$DUMP_FILE"
 fi
+
+RESTORE_STEP="restore"
 
 # b. Header gate: REDIS + 4 digit version 1..12
 HEADER="$(head -c 9 "$DUMP_FILE" | LC_ALL=C tr -c '[:print:]' '?')"

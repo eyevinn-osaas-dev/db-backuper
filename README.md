@@ -86,6 +86,16 @@ Valkey/Redis restore loads the backup into a throwaway `valkey-server` inside th
 
 When `ENCRYPTION_KEY` is set, backups are encrypted with AES-256-CBC before uploading to S3, and decrypted after downloading during restore. ClickHouse backups use the native S3 backup engine and do not support client-side encryption.
 
+## Failure text
+
+The console shows the last `ERROR:` line of the restore job log. Every restore failure path must therefore print one.
+
+- **Explicit failures** print their own line (`ERROR: S3 download failed`, `ERROR: Decryption failed`, `ERROR: mysql restore failed`, `refuse()` in the Valkey restore, and so on).
+- **Everything else** (a corrupt gzip, a failing `mv`, a `jq` parse error, `mc alias set`) is caught by `scripts/error-trap.sh`, which `entrypoint.sh` (restore only) and every `restore-*.sh` source. It prints exactly one `ERROR: restore failed during <step>` and exits with the failing command's own status. `<step>` is one of `download`, `decrypt`, `decompress`, `restore`, `configure S3`, set through `RESTORE_STEP` before each phase. The failing command line is never printed, because it can hold a database URL or key.
+- **Missing variable and non-executable script**: `ERROR: missing required variable <NAME>` (exit 1) and `ERROR: Script is not executable: <path>` (exit 126).
+- **Fixed-class text only, with one exception**: the Valkey line `backup could not be loaded (<last loader log line>), target not modified` keeps the last log line of the throwaway local loader. The loader never sees the target password or key data. Every other message is fixed text.
+- **New failure paths** must print an `ERROR:` line before `exit <N>`; `tests/run.sh` lints for it. Exit statuses are part of the contract (see the table in `tests/restore-errors.test.sh`).
+
 ## Exit Codes
 
 | Code | Meaning |
