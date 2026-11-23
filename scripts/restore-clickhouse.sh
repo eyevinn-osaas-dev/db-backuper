@@ -18,12 +18,28 @@ if [ -n "${DB_PASSWORD:-}" ]; then
   AUTH_ARGS="${AUTH_ARGS} --password ${DB_PASSWORD}"
 fi
 
-S3_PATH="S3('${S3_ENDPOINT}/${S3_BUCKET}/${S3_KEY}', '${S3_ACCESS_KEY}', '${S3_SECRET_KEY}')"
+# shellcheck source=clickhouse-archive.sh
+. "${SCRIPT_DIR}/clickhouse-archive.sh"
+S3_PATH="${CH_S3_PATH}"
 
-clickhouse-client \
+CH_ERR="$(mktemp)"
+if ! clickhouse-client \
   -h "${DB_HOST}" \
   --port "${DB_PORT}" \
   ${AUTH_ARGS} \
-  --query "RESTORE DATABASE ${DATABASE} FROM ${S3_PATH}" || { echo "ERROR: ClickHouse restore failed" >&2; exit 5; }
+  --query "RESTORE DATABASE ${DATABASE} FROM ${S3_PATH}${CH_PASSWORD_SETTING}" 2> "$CH_ERR"; then
+  cat "$CH_ERR" >&2
+  if [ "$CH_ENCRYPTED" = "true" ] && grep -qiE "wrong password|password is required" "$CH_ERR"; then
+    rm -f "$CH_ERR"
+    echo "ERROR: Decryption failed" >&2
+    exit 4
+  fi
+  rm -f "$CH_ERR"
+  echo "ERROR: ClickHouse restore failed" >&2
+  exit 5
+fi
+cat "$CH_ERR" >&2
+rm -f "$CH_ERR"
 
+if [ "$CH_ENCRYPTED" = "true" ]; then echo "ClickHouse archive: password-protected"; fi
 echo "ClickHouse restore completed successfully"

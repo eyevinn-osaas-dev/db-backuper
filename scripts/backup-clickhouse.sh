@@ -14,12 +14,16 @@ if [ -n "${DB_PASSWORD:-}" ]; then
 fi
 
 # ClickHouse can write backups directly to S3
-S3_PATH="S3('${S3_ENDPOINT}/${S3_BUCKET}/${S3_KEY}', '${S3_ACCESS_KEY}', '${S3_SECRET_KEY}')"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=clickhouse-archive.sh
+. "${SCRIPT_DIR}/clickhouse-archive.sh"
+S3_PATH="${CH_S3_PATH}"
 
 clickhouse-client \
   -h "${DB_HOST}" \
   --port "${DB_PORT}" \
   ${AUTH_ARGS} \
-  --query "BACKUP DATABASE ${DATABASE} TO ${S3_PATH}" || { echo "ERROR: ClickHouse backup failed" >&2; exit 2; }
+  --query "BACKUP DATABASE ${DATABASE} TO ${S3_PATH}${CH_PASSWORD_SETTING}" || { echo "ERROR: ClickHouse backup failed" >&2; exit 2; }
 
+if [ "$CH_ENCRYPTED" = "true" ]; then echo "ClickHouse archive: password-protected"; fi
 echo "ClickHouse backup completed successfully"

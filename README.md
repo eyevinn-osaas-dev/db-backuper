@@ -84,7 +84,17 @@ Valkey/Redis restore loads the backup into a throwaway `valkey-server` inside th
 
 ## Encryption
 
-When `ENCRYPTION_KEY` is set, backups are encrypted with AES-256-CBC before uploading to S3, and decrypted after downloading during restore. ClickHouse backups use the native S3 backup engine and do not support client-side encryption.
+When `ENCRYPTION_KEY` is set, backups are encrypted with AES-256-CBC before uploading to S3, and decrypted after downloading during restore.
+
+### ClickHouse
+
+ClickHouse uses its native S3 backup engine, so `encrypt.sh` cannot be applied. With `ENCRYPTION_KEY` set, the job writes a password-protected `.zip` archive (`BACKUP DATABASE ... TO S3(...) SETTINGS password = '<derived>'`) and restore reads it the same way.
+
+- **Derived password**: `HMAC-SHA256(ENCRYPTION_KEY, <archive object key>)` in hex. The tenant key is never sent to ClickHouse. The derived password opens only that one archive.
+- **Residual**: ClickHouse does not mask the `password` setting, so the derived password for an archive is visible in that instance's own `system.query_log` and `system.text_log` (ADR-0006 amendment 2026-11-23).
+- **S3 object shape**: one archive object, not a set of objects under a prefix. ClickHouse selects the format from the extension, so with the key set the object key is `S3_KEY` with `.zip` appended unless it already ends in `.zip`. `S3ObjectKey` for an encrypted backup is therefore `<S3_KEY>.zip`; restore applies the same rule, so it can be given either form. With the key unset nothing changes (a prefix of objects at `S3_KEY`).
+- **Log line**: backup and restore print exactly `ClickHouse archive: password-protected` when the query carried the password, and never otherwise. The banner `Encryption:    enabled` only shows the key is set; assert this line to prove the archive is protected.
+- **Failures**: a restore with a wrong or missing key exits 4 with `ERROR: Decryption failed` and restores nothing; other restore failures exit 5.
 
 ## Failure text
 
